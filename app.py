@@ -655,6 +655,7 @@ def generate_admin_dashboard_html(total_events, total_links, total_clicks, uniqu
             table {{
                 width: 100%;
                 border-collapse: collapse;
+                font-size: 0.85rem;
             }}
             
             th, td {{
@@ -673,6 +674,53 @@ def generate_admin_dashboard_html(total_events, total_links, total_clicks, uniqu
             
             tr:hover {{
                 background: #f8f9fa;
+            }}
+            
+            .coord-cell {{
+                font-family: 'Courier New', monospace;
+                font-size: 0.8rem;
+                color: #007bff;
+                font-weight: 500;
+                min-width: 80px;
+                cursor: help;
+                position: relative;
+            }}
+            
+            .coord-cell:hover {{
+                background: #e3f2fd;
+            }}
+            
+            .coord-cell[title]:hover::after {{
+                content: attr(title);
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #333;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 0.7rem;
+                white-space: nowrap;
+                z-index: 1000;
+                pointer-events: none;
+            }}
+            
+            .location-source {{
+                padding: 3px 6px;
+                border-radius: 8px;
+                font-size: 0.7rem;
+                font-weight: 600;
+            }}
+            
+            .source-gps {{
+                background: #d4edda;
+                color: #155724;
+            }}
+            
+            .source-ip {{
+                background: #d1ecf1;
+                color: #0c5460;
             }}
             
             .actions {{
@@ -757,23 +805,6 @@ def generate_admin_dashboard_html(total_events, total_links, total_clicks, uniqu
                 font-weight: 600;
             }}
             
-            .location-source {{
-                padding: 3px 6px;
-                border-radius: 8px;
-                font-size: 0.7rem;
-                font-weight: 600;
-            }}
-            
-            .source-gps {{
-                background: #d4edda;
-                color: #155724;
-            }}
-            
-            .source-ip {{
-                background: #d1ecf1;
-                color: #0c5460;
-            }}
-            
             .auto-refresh {{
                 position: fixed;
                 top: 15px;
@@ -827,6 +858,19 @@ def generate_admin_dashboard_html(total_events, total_links, total_clicks, uniqu
                 
                 .btn {{
                     min-width: 140px;
+                }}
+                
+                table {{
+                    font-size: 0.75rem;
+                }}
+                
+                th, td {{
+                    padding: 6px 4px;
+                }}
+                
+                .coord-cell {{
+                    font-size: 0.7rem;
+                    min-width: 70px;
                 }}
             }}
         </style>
@@ -933,6 +977,8 @@ def generate_admin_dashboard_html(total_events, total_links, total_clicks, uniqu
                             <tr>
                                 <th>IP</th>
                                 <th>Location</th>
+                                <th>Latitude</th>
+                                <th>Longitude</th>
                                 <th>Device</th>
                                 <th>Source</th>
                                 <th>Time</th>
@@ -951,10 +997,36 @@ def generate_admin_dashboard_html(total_events, total_links, total_clicks, uniqu
         
         timestamp = datetime.fromisoformat(event['timestamp']).strftime('%m-%d %H:%M') if event['timestamp'] else 'N/A'
         
+        # Format coordinates for better display
+        try:
+            lat_value = float(event['latitude']) if event['latitude'] and event['latitude'] != 'Unknown' else None
+            lng_value = float(event['longitude']) if event['longitude'] and event['longitude'] != 'Unknown' else None
+            
+            if lat_value is not None:
+                lat_display = f"{lat_value:.4f}"
+                lat_tooltip = f"Full precision: {lat_value:.8f}"
+            else:
+                lat_display = 'N/A'
+                lat_tooltip = 'Location not available'
+                
+            if lng_value is not None:
+                lng_display = f"{lng_value:.4f}"
+                lng_tooltip = f"Full precision: {lng_value:.8f}"
+            else:
+                lng_display = 'N/A'
+                lng_tooltip = 'Location not available'
+        except (ValueError, TypeError):
+            lat_display = 'N/A'
+            lng_display = 'N/A'
+            lat_tooltip = 'Invalid coordinate data'
+            lng_tooltip = 'Invalid coordinate data'
+        
         dashboard_html += f'''
                             <tr>
                                 <td>{event['ip_address']}</td>
                                 <td>{location_display}</td>
+                                <td class="coord-cell" title="{lat_tooltip}">{lat_display}</td>
+                                <td class="coord-cell" title="{lng_tooltip}">{lng_display}</td>
                                 <td>{device_display}</td>
                                 <td><span class="location-source {source_class}">{source_icon}</span></td>
                                 <td>{timestamp}</td>
