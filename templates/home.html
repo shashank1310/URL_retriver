@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>⚡ Lightning URL Tracker</title>
+    <meta name="theme-color" content="#667eea">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+            padding: 10px;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        h1 {
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 25px;
+            line-height: 1.4;
+        }
+        
+        .create-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 35px;
+            font-size: 1.1rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            width: 100%;
+            max-width: 300px;
+            touch-action: manipulation;
+        }
+        
+        .create-btn:hover, .create-btn:active {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+        }
+        
+        .link-result {
+            margin: 25px 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #e8f5e8, #d4edda);
+            border-radius: 15px;
+            border-left: 5px solid #28a745;
+        }
+        
+        .generated-link {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            position: relative;
+        }
+        
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.3s ease;
+            touch-action: manipulation;
+            font-size: 0.9rem;
+        }
+        
+        .copy-btn:hover, .copy-btn:active {
+            background: #218838;
+            transform: scale(1.05);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 25px 0;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 15px;
+            border-radius: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .stat-number {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.8rem;
+            margin-top: 5px;
+        }
+        
+        .features {
+            margin: 25px 0;
+            text-align: left;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            color: #555;
+            font-size: 0.9rem;
+        }
+        
+        .feature-icon {
+            margin-right: 10px;
+            font-size: 1.1rem;
+            min-width: 25px;
+        }
+        
+        .footer-note {
+            margin-top: 25px;
+            font-size: 0.85rem;
+            color: #888;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            padding-top: 15px;
+            line-height: 1.4;
+        }
+        
+        /* Mobile optimizations for Android */
+        @media (max-width: 768px) {
+            body {
+                padding: 15px 10px;
+            }
+            
+            .container {
+                padding: 25px 20px;
+            }
+            
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            .subtitle {
+                font-size: 0.9rem;
+            }
+            
+            .create-btn {
+                padding: 12px 25px;
+                font-size: 1rem;
+            }
+            
+            .generated-link {
+                font-size: 0.8rem;
+                padding: 12px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+                gap: 12px;
+            }
+            
+            .stat-card {
+                padding: 12px;
+            }
+            
+            .stat-number {
+                font-size: 1.5rem;
+            }
+            
+            .feature-item {
+                font-size: 0.85rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px 15px;
+            }
+            
+            h1 {
+                font-size: 1.6rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        /* Android touch feedback */
+        .create-btn:active, .copy-btn:active {
+            background: rgba(102, 126, 234, 0.8);
+            transition: background 0.1s ease;
+        }
+        
+        /* Improve text selection on mobile */
+        .generated-link {
+            -webkit-user-select: all;
+            -moz-user-select: all;
+            -ms-user-select: all;
+            user-select: all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚡ Lightning URL Tracker</h1>
+        <p class="subtitle">Create trackable links and gather comprehensive visitor analytics</p>
+        
+        <form method="post" action="/create_link">
+            <button type="submit" class="create-btn pulse">🚀 Generate Tracking Link</button>
+        </form>
+        
+        {% if link_url %}
+        <div class="link-result">
+            <h3>✅ Your Tracking Link is Ready!</h3>
+            <div class="generated-link">
+                <span id="linkText">{{ link_url }}</span>
+            </div>
+            <button class="copy-btn" onclick="copyToClipboard()">📋 Copy Link</button>
+            <p style="color: #666; margin-top: 10px; font-size: 0.9rem;">
+                Share this link to track clicks and gather visitor data!
+            </p>
+        </div>
+        {% endif %}
+        
+        {% if total_links > 0 %}
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ total_links }}</div>
+                <div class="stat-label">Links Created</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ total_clicks }}</div>
+                <div class="stat-label">Total Clicks</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ total_visitors }}</div>
+                <div class="stat-label">Unique Visitors</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="features">
+            <h3 style="text-align: center; margin-bottom: 15px; font-size: 1.1rem;">🎯 What We Track</h3>
+            <div class="feature-item">
+                <span class="feature-icon">🌍</span>
+                <span>Precise GPS location (with permission) + IP geolocation</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">💻</span>
+                <span>Device info: Browser, OS, screen resolution</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">🔍</span>
+                <span>User behavior: Referrer, language, connection type</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">⚡</span>
+                <span>Performance: Response times and loading speeds</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">🛡️</span>
+                <span>Privacy-conscious with secure data handling</span>
+            </div>
+        </div>
+        
+        <div class="footer-note">
+            <p>🔒 All data is collected ethically and securely stored. Users are redirected to an interactive experience!</p>
+        </div>
+    </div>
+    
+    <script>
+        function copyToClipboard() {
+            const linkText = document.getElementById('linkText').textContent;
+            
+            // For modern browsers (including Android Chrome)
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(linkText).then(function() {
+                    showCopySuccess();
+                }).catch(function() {
+                    fallbackCopyTextToClipboard(linkText);
+                });
+            } else {
+                // Fallback for older browsers or non-secure contexts
+                fallbackCopyTextToClipboard(linkText);
+            }
+        }
+        
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-999999px";
+            textArea.style.top = "-999999px";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                showCopySuccess();
+            } catch (err) {
+                console.error('Fallback: Unable to copy', err);
+                // Show manual copy instruction
+                alert('Please manually copy the link: ' + text);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+        
+        function showCopySuccess() {
+            const btn = document.querySelector('.copy-btn');
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Copied!';
+            btn.style.background = '#28a745';
+            
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '#28a745';
+            }, 2000);
+        }
+        
+        // Add touch feedback for mobile devices
+        document.addEventListener('DOMContentLoaded', function() {
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(button => {
+                button.addEventListener('touchstart', function() {
+                    this.style.transform = 'scale(0.95)';
+                });
+                
+                button.addEventListener('touchend', function() {
+                    this.style.transform = '';
+                });
+            });
+            
+            // Animate stat cards on load
+            const statCards = document.querySelectorAll('.stat-card');
+            statCards.forEach((card, index) => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(20px)';
+                card.style.transition = 'all 0.5s ease';
+                
+                setTimeout(() => {
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, index * 150);
+            });
+        });
+        
+        // Detect Android device for specific optimizations
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        if (isAndroid) {
+            document.body.classList.add('android-device');
+            
+            // Add Android-specific optimizations
+            const style = document.createElement('style');
+            style.textContent = `
+                .android-device .create-btn:active {
+                    background: linear-gradient(135deg, #5a6fd8, #6a4c93);
+                }
+                .android-device .copy-btn:active {
+                    background: #1e7e34;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            console.log('Android device detected - optimizations applied');
+        }
+    </script>
+</body>
+</html> 

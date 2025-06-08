@@ -56,11 +56,8 @@ def init_db():
         with app.app_context():
             db = sqlite3.connect(DATABASE)
             
-            # Drop old table if exists and create new enhanced one
-            db.execute('DROP TABLE IF EXISTS events')
-            
-            # Create comprehensive events table
-            db.execute('''CREATE TABLE events (
+            # Create comprehensive events table if not exists
+            db.execute('''CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 link_id TEXT,
                 ip_address TEXT,
@@ -94,8 +91,8 @@ def init_db():
                 response_time_ms INTEGER
             )''')
             
-            # Create links table for better tracking
-            db.execute('''CREATE TABLE links (
+            # Create links table for better tracking if not exists
+            db.execute('''CREATE TABLE IF NOT EXISTS links (
                 id TEXT PRIMARY KEY,
                 created_at TEXT,
                 click_count INTEGER DEFAULT 0,
@@ -134,15 +131,26 @@ def home():
     try:
         db = get_db()
         
-        # Get statistics
-        total_links = db.execute('SELECT COUNT(*) FROM links').fetchone()[0]
-        total_clicks = db.execute('SELECT SUM(click_count) FROM links').fetchone()[0] or 0
-        total_visitors = db.execute('SELECT COUNT(DISTINCT ip_address) FROM events').fetchone()[0]
+        # Get statistics with error handling
+        try:
+            total_links = db.execute('SELECT COUNT(*) FROM links').fetchone()[0]
+        except:
+            total_links = 0
+            
+        try:
+            total_clicks = db.execute('SELECT SUM(click_count) FROM links').fetchone()[0] or 0
+        except:
+            total_clicks = 0
+            
+        try:
+            total_visitors = db.execute('SELECT COUNT(DISTINCT ip_address) FROM events').fetchone()[0]
+        except:
+            total_visitors = 0
         
         response_time = int((time.time() - start_time) * 1000)
         
         return render_template('home.html',
-            link_url=request.args.get('link'),
+            link_url=request.args.get('link', ''),
             total_links=total_links,
             total_clicks=total_clicks,
             total_visitors=total_visitors,
@@ -150,7 +158,31 @@ def home():
         )
     except Exception as e:
         print(f"Error loading homepage: {e}")
-        return render_template('home.html')
+        # Return a simple fallback if template fails
+        try:
+            return render_template('home.html',
+                link_url='',
+                total_links=0,
+                total_clicks=0,
+                total_visitors=0,
+                response_time=0
+            )
+        except:
+            # Ultimate fallback
+            return f'''
+            <!DOCTYPE html>
+            <html><head><title>Lightning URL Tracker</title></head>
+            <body style="font-family: Arial; text-align: center; padding: 50px;">
+                <h1>⚡ Lightning URL Tracker</h1>
+                <p>Service is starting up... Please refresh in a moment.</p>
+                <form action="/create_link" method="post">
+                    <button type="submit" style="padding: 15px 30px; background: #667eea; color: white; border: none; border-radius: 25px; cursor: pointer;">
+                        Create Tracking Link
+                    </button>
+                </form>
+                <p>Database Error: {e}</p>
+            </body></html>
+            '''
 
 @app.route('/create_link', methods=['POST'])
 def create_link():

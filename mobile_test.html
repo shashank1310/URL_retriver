@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>📱 Android Compatibility Test</title>
+    <meta name="theme-color" content="#667eea">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: white;
+        }
+        
+        .test-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.8rem;
+        }
+        
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+        }
+        
+        .test-button {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid white;
+            padding: 12px 20px;
+            border-radius: 25px;
+            margin: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            touch-action: manipulation;
+            font-size: 1rem;
+        }
+        
+        .test-button:hover, .test-button:active {
+            background: white;
+            color: #667eea;
+            transform: scale(0.95);
+        }
+        
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            margin: 5px;
+        }
+        
+        .status.success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .status.error {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .status.warning {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        @media (max-width: 768px) {
+            .test-container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            h1 {
+                font-size: 1.5rem;
+            }
+            
+            .test-button {
+                width: 100%;
+                margin: 5px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>📱 Android Compatibility Test</h1>
+        
+        <div class="test-section">
+            <h3>🔍 Device Detection</h3>
+            <div id="deviceInfo"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🌍 Location Services</h3>
+            <button class="test-button" onclick="testLocation()">Test GPS Location</button>
+            <div id="locationResult"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📋 Clipboard API</h3>
+            <button class="test-button" onclick="testClipboard()">Test Copy/Paste</button>
+            <div id="clipboardResult"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🔋 Battery API</h3>
+            <button class="test-button" onclick="testBattery()">Test Battery Info</button>
+            <div id="batteryResult"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🌐 Network Info</h3>
+            <button class="test-button" onclick="testNetwork()">Test Connection</button>
+            <div id="networkResult"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>👆 Touch Events</h3>
+            <button class="test-button" onclick="testTouch()">Test Touch Feedback</button>
+            <div id="touchResult"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🚀 URL Tracker Test</h3>
+            <button class="test-button" onclick="testURLTracker()">Test Main App</button>
+            <div id="trackerResult"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📊 Overall Compatibility</h3>
+            <div id="overallResult"></div>
+        </div>
+    </div>
+    
+    <script>
+        let testResults = {
+            device: false,
+            location: false,
+            clipboard: false,
+            battery: false,
+            network: false,
+            touch: false,
+            tracker: false
+        };
+        
+        // Initialize device detection
+        window.addEventListener('DOMContentLoaded', function() {
+            detectDevice();
+            updateOverallResult();
+        });
+        
+        function detectDevice() {
+            const userAgent = navigator.userAgent;
+            const isAndroid = /Android/i.test(userAgent);
+            const isMobile = /Mobi|Android/i.test(userAgent);
+            const isChrome = /Chrome/i.test(userAgent);
+            
+            let deviceHtml = `
+                <div class="result">
+                    User Agent: ${userAgent}<br>
+                    <span class="status ${isAndroid ? 'success' : 'warning'}">${isAndroid ? '✅ Android Detected' : '⚠️ Not Android'}</span>
+                    <span class="status ${isMobile ? 'success' : 'warning'}">${isMobile ? '✅ Mobile' : '⚠️ Desktop'}</span>
+                    <span class="status ${isChrome ? 'success' : 'warning'}">${isChrome ? '✅ Chrome' : '⚠️ Other Browser'}</span>
+                    <br><br>
+                    Screen: ${screen.width}x${screen.height}<br>
+                    Viewport: ${window.innerWidth}x${window.innerHeight}<br>
+                    Device Pixel Ratio: ${window.devicePixelRatio || 'Unknown'}<br>
+                    Touch Support: ${('ontouchstart' in window) ? '✅ Yes' : '❌ No'}
+                </div>
+            `;
+            
+            document.getElementById('deviceInfo').innerHTML = deviceHtml;
+            testResults.device = isAndroid && isMobile;
+            updateOverallResult();
+        }
+        
+        function testLocation() {
+            const resultDiv = document.getElementById('locationResult');
+            resultDiv.innerHTML = '<div class="result">Testing GPS location...</div>';
+            
+            if ('geolocation' in navigator) {
+                const options = {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 60000
+                };
+                
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const result = `
+                            <div class="result">
+                                <span class="status success">✅ Location Access Granted</span><br>
+                                Latitude: ${position.coords.latitude}<br>
+                                Longitude: ${position.coords.longitude}<br>
+                                Accuracy: ${position.coords.accuracy}m<br>
+                                Altitude: ${position.coords.altitude || 'N/A'}<br>
+                                Speed: ${position.coords.speed || 'N/A'}<br>
+                                Heading: ${position.coords.heading || 'N/A'}
+                            </div>
+                        `;
+                        resultDiv.innerHTML = result;
+                        testResults.location = true;
+                        updateOverallResult();
+                    },
+                    function(error) {
+                        const errorMessages = {
+                            1: 'Permission denied by user',
+                            2: 'Position unavailable',
+                            3: 'Request timeout'
+                        };
+                        
+                        resultDiv.innerHTML = `
+                            <div class="result">
+                                <span class="status error">❌ Location Error</span><br>
+                                Error: ${errorMessages[error.code] || 'Unknown error'}<br>
+                                Message: ${error.message}
+                            </div>
+                        `;
+                        testResults.location = false;
+                        updateOverallResult();
+                    },
+                    options
+                );
+            } else {
+                resultDiv.innerHTML = '<div class="result"><span class="status error">❌ Geolocation not supported</span></div>';
+                testResults.location = false;
+                updateOverallResult();
+            }
+        }
+        
+        function testClipboard() {
+            const resultDiv = document.getElementById('clipboardResult');
+            const testText = 'http://localhost:5000/l/test123';
+            
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(testText).then(function() {
+                    return navigator.clipboard.readText();
+                }).then(function(text) {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            <span class="status success">✅ Clipboard API Works</span><br>
+                            Written: ${testText}<br>
+                            Read: ${text}<br>
+                            Match: ${text === testText ? '✅ Yes' : '❌ No'}
+                        </div>
+                    `;
+                    testResults.clipboard = true;
+                    updateOverallResult();
+                }).catch(function(err) {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            <span class="status error">❌ Clipboard Error</span><br>
+                            Error: ${err.message}
+                        </div>
+                    `;
+                    testResults.clipboard = false;
+                    updateOverallResult();
+                });
+            } else {
+                // Test fallback method
+                try {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = testText;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    const success = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            <span class="status ${success ? 'success' : 'error'}">${success ? '✅' : '❌'} Fallback Copy</span><br>
+                            ${success ? 'execCommand copy successful' : 'execCommand copy failed'}<br>
+                            Note: Modern clipboard API not available
+                        </div>
+                    `;
+                    testResults.clipboard = success;
+                    updateOverallResult();
+                } catch (err) {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            <span class="status error">❌ Clipboard Not Supported</span><br>
+                            Error: ${err.message}
+                        </div>
+                    `;
+                    testResults.clipboard = false;
+                    updateOverallResult();
+                }
+            }
+        }
+        
+        function testBattery() {
+            const resultDiv = document.getElementById('batteryResult');
+            
+            if ('getBattery' in navigator) {
+                navigator.getBattery().then(function(battery) {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            <span class="status success">✅ Battery API Available</span><br>
+                            Level: ${Math.round(battery.level * 100)}%<br>
+                            Charging: ${battery.charging ? '✅ Yes' : '❌ No'}<br>
+                            Charging Time: ${battery.chargingTime === Infinity ? 'Unknown' : battery.chargingTime + 's'}<br>
+                            Discharging Time: ${battery.dischargingTime === Infinity ? 'Unknown' : battery.dischargingTime + 's'}
+                        </div>
+                    `;
+                    testResults.battery = true;
+                    updateOverallResult();
+                });
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <span class="status warning">⚠️ Battery API Not Available</span><br>
+                        This is normal on many modern browsers for privacy reasons
+                    </div>
+                `;
+                testResults.battery = false;
+                updateOverallResult();
+            }
+        }
+        
+        function testNetwork() {
+            const resultDiv = document.getElementById('networkResult');
+            
+            let networkInfo = `
+                <div class="result">
+                    Online Status: ${navigator.onLine ? '✅ Online' : '❌ Offline'}<br>
+            `;
+            
+            if ('connection' in navigator) {
+                const connection = navigator.connection;
+                networkInfo += `
+                    <span class="status success">✅ Network Info Available</span><br>
+                    Connection Type: ${connection.effectiveType || 'Unknown'}<br>
+                    Downlink: ${connection.downlink || 'Unknown'} Mbps<br>
+                    RTT: ${connection.rtt || 'Unknown'} ms<br>
+                    Save Data: ${connection.saveData ? '✅ Enabled' : '❌ Disabled'}
+                `;
+                testResults.network = true;
+            } else {
+                networkInfo += `<span class="status warning">⚠️ Connection API Not Available</span>`;
+                testResults.network = false;
+            }
+            
+            networkInfo += '</div>';
+            resultDiv.innerHTML = networkInfo;
+            updateOverallResult();
+        }
+        
+        function testTouch() {
+            const resultDiv = document.getElementById('touchResult');
+            const testButton = document.createElement('button');
+            testButton.textContent = 'Touch This Button';
+            testButton.className = 'test-button';
+            testButton.style.margin = '10px 0';
+            
+            let touchStarted = false;
+            let touchEnded = false;
+            
+            testButton.addEventListener('touchstart', function(e) {
+                touchStarted = true;
+                this.style.background = 'white';
+                this.style.color = '#667eea';
+                e.preventDefault();
+            });
+            
+            testButton.addEventListener('touchend', function(e) {
+                touchEnded = true;
+                this.style.background = 'rgba(255, 255, 255, 0.2)';
+                this.style.color = 'white';
+                e.preventDefault();
+                
+                setTimeout(() => {
+                    const result = `
+                        <div class="result">
+                            <span class="status ${touchStarted && touchEnded ? 'success' : 'error'}">
+                                ${touchStarted && touchEnded ? '✅' : '❌'} Touch Events
+                            </span><br>
+                            Touch Start: ${touchStarted ? '✅' : '❌'}<br>
+                            Touch End: ${touchEnded ? '✅' : '❌'}<br>
+                            Touch Support: ${('ontouchstart' in window) ? '✅' : '❌'}
+                        </div>
+                    `;
+                    resultDiv.innerHTML = result;
+                    testResults.touch = touchStarted && touchEnded;
+                    updateOverallResult();
+                }, 100);
+            });
+            
+            resultDiv.innerHTML = '<div class="result">Touch the button below to test touch events:</div>';
+            resultDiv.appendChild(testButton);
+        }
+        
+        function testURLTracker() {
+            const resultDiv = document.getElementById('trackerResult');
+            resultDiv.innerHTML = '<div class="result">Testing URL Tracker connectivity...</div>';
+            
+            fetch('http://localhost:5000/')
+                .then(response => response.text())
+                .then(html => {
+                    const isValid = html.includes('Lightning URL Tracker') && html.includes('Generate Tracking Link');
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            <span class="status ${isValid ? 'success' : 'error'}">
+                                ${isValid ? '✅' : '❌'} URL Tracker App
+                            </span><br>
+                            Status: ${isValid ? 'Working correctly' : 'Error in response'}<br>
+                            <a href="http://localhost:5000/" target="_blank" style="color: #fff; text-decoration: underline;">
+                                Open Main App
+                            </a>
+                        </div>
+                    `;
+                    testResults.tracker = isValid;
+                    updateOverallResult();
+                })
+                .catch(error => {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            <span class="status error">❌ Connection Failed</span><br>
+                            Error: ${error.message}<br>
+                            Make sure the app is running on port 5000
+                        </div>
+                    `;
+                    testResults.tracker = false;
+                    updateOverallResult();
+                });
+        }
+        
+        function updateOverallResult() {
+            const overallDiv = document.getElementById('overallResult');
+            const totalTests = Object.keys(testResults).length;
+            const passedTests = Object.values(testResults).filter(result => result === true).length;
+            const percentage = Math.round((passedTests / totalTests) * 100);
+            
+            let status = 'error';
+            let message = 'Poor Compatibility';
+            
+            if (percentage >= 80) {
+                status = 'success';
+                message = 'Excellent Compatibility';
+            } else if (percentage >= 60) {
+                status = 'warning';
+                message = 'Good Compatibility';
+            }
+            
+            overallDiv.innerHTML = `
+                <div class="result">
+                    <span class="status ${status}">${percentage}% ${message}</span><br>
+                    Passed: ${passedTests}/${totalTests} tests<br><br>
+                    <strong>Test Results:</strong><br>
+                    Device Detection: ${testResults.device ? '✅' : '❌'}<br>
+                    GPS Location: ${testResults.location ? '✅' : '❌'}<br>
+                    Clipboard: ${testResults.clipboard ? '✅' : '❌'}<br>
+                    Battery API: ${testResults.battery ? '✅' : '❌'}<br>
+                    Network Info: ${testResults.network ? '✅' : '❌'}<br>
+                    Touch Events: ${testResults.touch ? '✅' : '❌'}<br>
+                    URL Tracker: ${testResults.tracker ? '✅' : '❌'}
+                </div>
+            `;
+        }
+        
+        // Add visual feedback for all buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            const buttons = document.querySelectorAll('.test-button');
+            buttons.forEach(button => {
+                button.addEventListener('touchstart', function() {
+                    this.style.transform = 'scale(0.95)';
+                });
+                
+                button.addEventListener('touchend', function() {
+                    this.style.transform = '';
+                });
+            });
+        });
+    </script>
+</body>
+</html> 
